@@ -13,7 +13,7 @@ splitName <- strsplit(fasta_2_filename, split="\\.")[[1]]
 fileStem <- paste0(splitName[1:(length(splitName)-1)], collapse=".")
 
 
-codons_filename <- "codons.tab"
+codons_filename <- "codons.txt"
 
 fasta_1 <- readLines(fasta_1_filename)
 fasta_1 <- fasta_1[2:length(fasta_1)]
