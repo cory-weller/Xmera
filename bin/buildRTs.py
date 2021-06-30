@@ -440,8 +440,8 @@ if __name__ == "__main__":
     ##################
 
     missing_files = 0
-    for filename in [   args.gene1_filestem + '.cds.fasta',
-                        args.gene2_filestem + '.cds.fasta',
+    for filename in [   args.gene1_filestem + '.fasta',
+                        args.gene2_filestem + '.fasta',
                         args.flanking +  ".upstream.fasta", 
                         args.flanking + ".downstream.fasta"]:
         if not os.path.isfile(filename):
@@ -467,8 +467,8 @@ if __name__ == "__main__":
 
 
 
-    dna1 = fasta(args.gene1_filestem + '.cds.fasta')
-    dna2 = fasta(args.gene2_filestem + '.cds.fasta')
+    dna1 = fasta(args.gene1_filestem + '.fasta')
+    dna2 = fasta(args.gene2_filestem + '.fasta')
 
 
     pep1 = lambda: None
