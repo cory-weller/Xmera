@@ -117,7 +117,7 @@ def permute_peptide_fasta(fasta_text):
     return permuted_seq
 
 def run_clustal(b_alignment):
-    output = subprocess.run(["./clustalo", "-i", "-", "--outfmt", "clu"], input=b_alignment, stdout=PIPE).stdout.decode()
+    output = subprocess.run(["../Xmera/bin/clustalo", "-i", "-", "--outfmt", "clu"], input=b_alignment, stdout=PIPE).stdout.decode()
     if debug:
         print(output)
     return output
@@ -177,16 +177,23 @@ def translate(dna_seq):
         protein+= table[codon]     
     return protein 
 
-# Unused
-# def write_permutations(permutations, n_permutations, outfile_name="permutations.out"):
-#     print("Writing %s permutations to %s" % (n_permutations, outfile_name))
-#     with open(outfile_name, "w") as outfile:
-#         current_i = 0
-#         for i in permutations:
-#             current_i += 1
-#             if current_i % 10 == 0:
-#                 print(current_i)
-#             outfile.write('\n'.join(unfold_alignment(i)) + '\n\n')
+def printRTs(RTs, uniqueType):
+    global unique_chimeras
+    for template in RTs:
+        if uniqueType == "all":
+            print(template.rt_formatted)
+        else:
+            if uniqueType == "protein":
+                chimera = template.pepChimera
+            elif uniqueType == "dna":
+                chimera = template.dnaChimera
+            if chimera not in unique_chimeras:
+                unique_chimeras.append(chimera)
+                #print(template.pepChimera)
+                print(template.rt_formatted)
+
+def warning_on_one_line(message, category, filename, lineno, file=None, line=None):
+        return '%s:%s: %s:%s\n' % (filename, lineno, category.__name__, message)
 
 ##################
 # DEFINE CLASSES #
@@ -215,6 +222,7 @@ class clustal_alignment:
         self.offset2 = get_index_offset(self.aln2)
         self.non_homology_combos = list(return_combos(self.offset1, self.offset2, self.non_homology_regions, args.max_indel))
         self.homology_combos = list(return_combos(self.offset1, self.offset2, self.homology_regions, args.max_indel))
+        self.aligned_combos = [(self.offset1[i], self.offset2[i]) for i in range(len(self.scores)) if self.scores[i] not in ["f","s"]]
 
 class repair_template:
     help = 'repair template for generating an intended chimera'
@@ -225,8 +233,8 @@ class repair_template:
         self.dna2 = dna2
         self.pep1 = pep1
         self.pep2 = pep2
-        self.gene1 = gene1
-        self.gene2 = gene2
+        self.gene1 = gene1.split("/")[-1]
+        self.gene2 = gene2.split("/")[-1]
         self.homology_length = int(homology_length)
         self.dnaSeq1 = dna1[0:self.idx1]
         self.dnaSeq2 = dna2[self.idx2:]
@@ -280,6 +288,9 @@ if __name__ == "__main__":
     import random
     import argparse
     import subprocess
+    import warnings
+    warnings.formatwarning = warning_on_one_line
+
     from subprocess import PIPE
 
     parser = argparse.ArgumentParser()
@@ -289,14 +300,6 @@ if __name__ == "__main__":
                         help='File stem for gene 2. Ensure proper naming of <GENE2_FILESTEM>.pep.fasta and <GENE2_FILESTEM>.cdna.fasta')
     parser.add_argument("--debug", 
                         help="Assist with debugging by increasing output verbosity",
-                        action="store_true")
-    parser.add_argument("--all", 
-                        help='''By default, this program will generate a list for only
-                                potential chimeras where transitions between homologs
-                                occurs at a point of confident homology. Setting the
-                                --all flag will also generate chimeras with transitions
-                                outside of regions of confident homology. Used with
-                                -n, --indel. See <figure> for explanation.''',
                         action="store_true")
     parser.add_argument("--max-indel",
                         type=int,
@@ -310,15 +313,6 @@ if __name__ == "__main__":
                                 explanation. To include all possible transitions, set
                                 to -1. Default: 0 (only transition between codons at
                                 their partner in the alignment, with no offset).''')
-#    parser.add_argument("--padding",
-#                        type=int,
-#                        nargs='?',
-#                        const=1,
-#                        default=1000,
-#                        help='''Integer. Defines the number of nucleotides upstream and downstream
-#                                of the genomic DNA for the gene of interest in the
-#                                user-provided dna fasta file. Default value: 1000 bp,
-#                                i.e. genomic dna +/- 1 kilobase.''')
     parser.add_argument("--threshold-length",
                         type=int,
                         nargs='?',
@@ -380,30 +374,34 @@ if __name__ == "__main__":
                                 Defines degree of amino acid similarity from clustal alignment
                                 for defining regions of confident homology. Used with -L.
                                 'low' includes [.:*], 'medium includes' [:*], 'high' includes [*].
-                                 Only used when manually testing alignments--routine use 
-                                does not require this argument. Default: high.''')
-    parser.add_argument("--strict", 
-                        help='''Specify to only include repair templates in regions
-                               of high homology confidence''',
-                        action="store_true")
+                                Default: high.''')
+    parser.add_argument("--mode",
+                        type=str,
+                        nargs='?',
+                        const=1,
+                        default="aligned",
+                        help='''String, accepts 'aligned' 'strict' or 'all'.
+                                aligned (default): only transition at aligned codons
+                                strict: only transition at aligned codons with confident homology (see: --threshold-length and --specificity)
+                                all: every possible transition, including indels if --max-indel is nonzero''')
     parser.add_argument("--permutations",
                         type=int,
                         nargs='?',
                         const=1,
                         help = '''Interger. Number of alignment permutations to run. Default: 100.''')
     parser.add_argument("--unique", 
-                        help='''String, accepts 'protein' or 'dna'. 
-                                Default 'prot' will deduplicate oligo sequences, retaining one representative
+                        help='''String, accepts 'protein' or 'dna' or 'all'. Default: all sequences (no deduplication).
+                                Specifying 'protein' will deduplicate oligo sequences, retaining one representative
                                 for a given protein sequence. 'dna' will retain identical dna sequences,
                                 with the possibility of duplicate resulting protein sequences (which may be of
                                 interest for codon bias).''',
                         type=str,
                         nargs='?',
                         const=1,
-                        default="prot")
+                        default="all")
     parser.add_argument("--flanking", 
                         help='''String. Defines the file stem signifying flanking regions upstream and downstream the
-                                homologous genes, i.e. <FILE_STEM>.upstream and <FILE_STEM>.downstream.''',
+                                homologous genes, i.e. <FILE_STEM>.upstream.fasta and <FILE_STEM>.downstream.fasta''',
                         type=str,
                         nargs='?',
                         const=1,
@@ -430,9 +428,17 @@ if __name__ == "__main__":
     try: assert args.specificity in ["low", "medium", "high"], "ERROR: -s, --specificity must be 'low', 'medium', or 'high'"
     except AssertionError as error: sys.exit(error)
 
-    try: assert args.unique in ["protein", "dna"], "ERROR: --unique must be 'prot' or 'dna'"
+    try: assert args.unique in ["protein", "dna", "all"], "ERROR: --unique must be 'prot' or 'dna'"
     except AssertionError as error: sys.exit(error)
-    
+
+    try: assert args.mode in ["aligned", "strict", "all"], "ERROR: --mode must be 'aligned' 'strict' or 'all'"
+    except AssertionError as error: sys.exit(error)
+
+    try: assert not (args.mode in ['aligned', 'strict'] and args.max_indel != 0), "ERROR: nonzero --max-indel incompatible with strict or aligned mode. Run with --mode all"
+    except AssertionError as error: sys.exit(error)
+
+
+
 #######################################################################################################################
 
     ##################
@@ -445,13 +451,13 @@ if __name__ == "__main__":
                         args.flanking +  ".upstream.fasta", 
                         args.flanking + ".downstream.fasta"]:
         if not os.path.isfile(filename):
-            print("Error: File %s does not exist" % filename)
+            sys.stderr.write("Error: File %s does not exist\n" % filename)
             missing_files += 1
-    if not os.path.isfile("clustalo"):
-        print("Error: clustalo binary not found")
+    if not os.path.isfile("../Xmera/bin/clustalo"):
+        sys.stderr.write("Error: clustalo binary not found\n")
         missing_files += 1
     if missing_files > 0:
-        sys.exit("Aborting due to missing files")
+        sys.exit("Aborting due to missing files\n")
     if args.repair_template_length % 2 != 0:
         args.repair_template_length -= 1
     homology_length = args.repair_template_length / 2
@@ -462,14 +468,9 @@ if __name__ == "__main__":
     # RUN CODE #
     ############
 
-    #pep1 = read_text(args.gene1_filestem + '.pep.fasta').rstrip() + "\n"    # Ensures file ends with newline. Required in this format for clustal
-    #pep2 = read_text(args.gene2_filestem + '.pep.fasta').rstrip() + "\n"    # Ensures file ends with newline Required in this format for clustal
-
-
-
     dna1 = fasta(args.gene1_filestem + '.fasta')
     dna2 = fasta(args.gene2_filestem + '.fasta')
-
+    print(args.mode)
 
     pep1 = lambda: None
     pep2 = lambda: None
@@ -484,92 +485,34 @@ if __name__ == "__main__":
     pep_txt2 = '>%s\n%s\n' % (args.gene2_filestem, pep2.seq)
 
     
-
-
-
     upstream = fasta(args.flanking + ".upstream.fasta")
     downstream = fasta(args.flanking + ".downstream.fasta")
 
-    if args.all:
-        transition_points = [ [i,j] for i in range(len(pep1.seq)) for j in range(len(pep2.seq)) ]
-        all_RTs = generate_repair_templates(transition_points, 
-                                            args.gene1_filestem, 
-                                            args.gene2_filestem, 
-                                            pep1.seq, pep2.seq, 
-                                            dna1.seq, dna2.seq, 
-                                            upstream.seq, 
-                                            downstream.seq, 
-                                            homology_length, 
-                                            args.five_prime_padding, 
-                                            args.three_prime_padding, 
-                                            args.primer_length, 
-                                            args.oligo_length
-                                            )
-        for template in all_RTs:
-            print(template.rt_formatted)
-        sys.exit("exiting")
-
     alignment = list(run_alignment(0, pep_txt1, pep_txt2, args.threshold_length, args.specificity))[0]
 
-    
-    non_homology_RTs = generate_repair_templates(alignment.non_homology_combos, args.gene1_filestem, args.gene2_filestem, pep1.seq, pep2.seq, dna1.seq, dna2.seq, upstream.seq, downstream.seq, homology_length, args.five_prime_padding, args.three_prime_padding, args.primer_length, args.oligo_length)
-    homology_RTs = generate_repair_templates(alignment.homology_combos, args.gene1_filestem, args.gene2_filestem, pep1.seq, pep2.seq, dna1.seq, dna2.seq, upstream.seq, downstream.seq, homology_length, args.five_prime_padding, args.three_prime_padding, args.primer_length, args.oligo_length)
-
+    print(str(len(alignment.aligned_combos)))
+    combos = []
     unique_chimeras = []
 
-    if args.unique == "protein":
-        for template in homology_RTs:
-            if(template.pepChimera) not in unique_chimeras:
-                unique_chimeras.append(template.pepChimera)
-                print(template.rt_formatted)
-        if not args.strict:
-            for template in non_homology_RTs:
-                if(template.pepChimera) not in unique_chimeras:
-                    unique_chimeras.append(template.pepChimera)
-                    print(template.rt_formatted)
+    if args.mode == "strict":
+        combos += alignment.homology_combos
+    elif args.mode == "aligned":
+        combos += alignment.aligned_combos
+    else:
+        combos += alignment.aligned_combos
+        combos += alignment.non_homology_combos
+        combos += alignment.homology_combos
 
-    elif args.unique == "dna":
-        for template in homology_RTs:
-                print(template.rt_formatted)
-        if not args.strict:
-            for template in non_homology_RTs:
-                print(template.rt_formatted)
+    # convert to unique list
+    combos = list(set(combos))
 
+    RTs = generate_repair_templates(combos, args.gene1_filestem, args.gene2_filestem, pep1.seq, pep2.seq, dna1.seq, dna2.seq, upstream.seq, downstream.seq, homology_length, args.five_prime_padding, args.three_prime_padding, args.primer_length, args.oligo_length)
 
+    printRTs(RTs, args.unique)
 
-
-  #  print(alignment.non_homology_combos)
-
-
-    #print(alignment.non_homology_combos)
 
     sys.exit()
 
-    if not args.permutations == None:
-        print("Building permutation generator for %s permutations..." % (args.permutations))
-        permutations = run_alignment(args.permutations, pep1, pep2, args.threshold_length, args.specificity)
-        print("Built permutation generator!")
-        for i in permutations:
-            print(i.homology_regions)
-            print(i.homology_combos)
 
-    elif args.permutations == None:
-        alignment = run_alignment(0, pep1, pep2, args.threshold_length, args.specificity)
-        i = list(alignment)[0]
-        if not os.path.isfile("true_alignment.out"):
-            with open("true_alignment.out", 'w') as outfile:
-                outfile.write(                           
-                 '\t'.join(["specificity", "match_length", "homology_regions", "alignment_length", "n_chimeras"]) + '\n'
-                        )
-        with open("true_alignment.out", 'a') as outfile:
-            outfile.write('\t'.join([str(x) for x in [args.specificity, args.threshold_length, len(i.homology_regions), len(i.aln1), len(i.homology_combos)]]) + '\n')
 
-    sys.exit("Exited successfully!")
 
-#######################################################################################################################
-# NOTES / TODO
-
-# Round 1 permutations to determine area to focus in on
-# Round 2 permutations to get best FDR
-# Option to just get indel = 0 chimeras
-# Option to only make chimeras within high confidence homology regions
