@@ -380,10 +380,11 @@ if __name__ == "__main__":
                         nargs='?',
                         const=1,
                         default="aligned",
-                        help='''String, accepts 'aligned' 'strict' or 'all'.
+                        help='''String, accepts 'aligned' 'strict' 'all' and 'extensive'.
                                 aligned (default): only transition at aligned codons
                                 strict: only transition at aligned codons with confident homology (see: --threshold-length and --specificity)
-                                all: every possible transition, including indels if --max-indel is nonzero''')
+                                all: every possible transition, bounded by regions of homology if --max-indel is nonzero
+                                extensive: every possible transition (N choose 2)''')
     parser.add_argument("--permutations",
                         type=int,
                         nargs='?',
@@ -431,7 +432,7 @@ if __name__ == "__main__":
     try: assert args.unique in ["protein", "dna", "all"], "ERROR: --unique must be 'prot' or 'dna'"
     except AssertionError as error: sys.exit(error)
 
-    try: assert args.mode in ["aligned", "strict", "all"], "ERROR: --mode must be 'aligned' 'strict' or 'all'"
+    try: assert args.mode in ["aligned", "strict", "all", "extensive"], "ERROR: --mode must be 'aligned' 'strict' 'all' or 'extensive'"
     except AssertionError as error: sys.exit(error)
 
     try: assert not (args.mode in ['aligned', 'strict'] and args.max_indel != 0), "ERROR: nonzero --max-indel incompatible with strict or aligned mode. Run with --mode all"
@@ -470,7 +471,6 @@ if __name__ == "__main__":
 
     dna1 = fasta(args.gene1_filestem + '.fasta')
     dna2 = fasta(args.gene2_filestem + '.fasta')
-    print(args.mode)
 
     pep1 = lambda: None
     pep2 = lambda: None
@@ -490,7 +490,6 @@ if __name__ == "__main__":
 
     alignment = list(run_alignment(0, pep_txt1, pep_txt2, args.threshold_length, args.specificity))[0]
 
-    print(str(len(alignment.aligned_combos)))
     combos = []
     unique_chimeras = []
 
@@ -498,6 +497,8 @@ if __name__ == "__main__":
         combos += alignment.homology_combos
     elif args.mode == "aligned":
         combos += alignment.aligned_combos
+    elif args.mode == "extensive":
+        combos += [ (i,j) for i in range(len(pep1.seq)) for j in range(len(pep2.seq)) ]
     else:
         combos += alignment.aligned_combos
         combos += alignment.non_homology_combos
@@ -512,7 +513,3 @@ if __name__ == "__main__":
 
 
     sys.exit()
-
-
-
-
