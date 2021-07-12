@@ -74,31 +74,30 @@ def getSNPs(table):
 
 def insert_codons(seq1, seq2, pad_left, pad_right, homology_length, triplets_to_insert):
     seqlen = len(seq1)
-    for codon_position in range(0, len(seq1), 3):
+    for codonPosition in range(0, len(seq1), 3):
         # note that seq2 is the wild type
-        replaced_codon = seq2[codon_position : codon_position + 3]
-        replaced_AA = translate(replaced_codon)
-        left_padding_length = max([homology_length - codon_position, 0])
+        replacedCodon = seq2[codonPosition : codonPosition + 3]
+        replacedAA = translate(replacedCodon)
+        left_padding_length = max([homology_length - codonPosition, 0])
         if left_padding_length > 0:
             left_padding_seq = pad_left[-left_padding_length:].lower()
         else:
             left_padding_seq = ''
-        
-        right_padding_length = max([homology_length - (len(seq1) - codon_position), 0])
+        right_padding_length = max([homology_length - (len(seq1) - codonPosition) + 3, 0])
         if right_padding_length > 0:
             right_padding_seq = pad_right[:right_padding_length].lower()
         else:
             right_padding_seq = ''
 
-        for i in triplets_to_insert:
-            inserted_AA = translate(i)
-            if inserted_AA in singleSNPcodons[replaced_codon]:
+        for insertedTriplet in triplets_to_insert:
+            insertedAA = translate(insertedTriplet)
+            if insertedAA in singleSNPcodons[replacedCodon]:
                 singleSNPmutation = True
             else:
                 singleSNPmutation = False
-            left_seq  = seq1[max(0, codon_position - homology_length) : codon_position]
-            right_seq = seq2[codon_position + 3 : min(seqlen, codon_position + homology_length + 3) ]
-            yield(' '.join([replaced_codon, "("+replaced_AA+")", "to", inserted_AA, str(singleSNPmutation), left_padding_seq + left_seq, i, right_seq + right_padding_seq]))
+            left_seq  = seq1[max(0, codonPosition - homology_length) : codonPosition]
+            right_seq = seq2[codonPosition + 3 : min(seqlen, codonPosition + homology_length + 3) ]
+            yield(mutagenic_repair_template(codonPosition, replacedCodon, replacedAA, insertedAA, singleSNPmutation, left_padding_seq + left_seq, insertedTriplet, right_seq + right_padding_seq))
 
 def is_file(arg, provided):
     if provided == None:
@@ -111,6 +110,22 @@ def is_file(arg, provided):
         return True
 
 ## CLASSES
+class mutagenic_repair_template:
+    help = 'repair template for generating an intended mutant chimera'
+    def __init__(self, codonPosition, replacedCodon, replacedAA, insertedAA, singleSNPmutation, leftArm, insertedCodon, rightArm):
+        self.codonPosition = codonPosition + 1
+        self.replacedCodon = replacedCodon
+        self.replacedAA = replacedAA
+        self.insertedAA = insertedAA
+        self.singleSNPmutation = singleSNPmutation
+        self.leftArm = leftArm
+        self.insertedCodon = insertedCodon
+        self.rightArm = rightArm
+        self.header = ">%s_%s_to_%s_SNP=%s" % (self.codonPosition, self.replacedAA, self.insertedAA, self.singleSNPmutation)
+        self.RTseq = self.leftArm + self.insertedCodon + self.rightArm 
+        # commented version for debugging only
+        #self.formatted = self.header+'\n' + '\n'.join([self.leftArm, self.insertedCodon, self.rightArm])
+        self.formatted = self.header+'\n' + '\n'.join([self.RTseq[x:x+80] for x in range(0, len(self.RTseq), 80)])
 
 
 # PARSE ARGUMENTS
@@ -154,6 +169,12 @@ if __name__ == "__main__":
         nargs='?',
         const=1,
         help='''fasta file containing upstream DNA sequence''')
+    parser.add_argument("--length",
+        type=int,
+        nargs='?',
+        const=1,
+        default=163,
+        help='''length of combined homology arms and inserted codon (default:163)''')
     parser.add_argument("--downstream",
         type=str,
         nargs='?',
@@ -257,11 +278,10 @@ if __name__ == "__main__":
 
 
 
-    mutagenic_repair_templates = insert_codons(fasta_1, fasta_2, upstream, downstream, 50, inserted_codons)
+    mutagenic_repair_templates = insert_codons(fasta_1, fasta_2, upstream, downstream, int((args.length - 3)/2), inserted_codons)
 
-    with open('test.out', 'w') as outfile:
-        for i in mutagenic_repair_templates:
-            outfile.write(i + '\n')
+    for RT in mutagenic_repair_templates:
+        print(RT.formatted)
 
 
     exit
