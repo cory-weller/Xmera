@@ -144,7 +144,8 @@ def generate_repair_templates(  all_recombination_points,
                                 primer_length,
                                 oligo_length):
     for recombination_point in all_recombination_points:
-        yield(repair_template(recombination_point, gene1, gene2, pep1, pep2, dna1, dna2, upstream, downstream, homology_length, five_prime_padding, three_prime_padding, primer_length, oligo_length))
+        if not args.deletion or (args.deletion == True and recombination_point[1] >= recombination_point[0]):
+            yield(repair_template(recombination_point, gene1, gene2, pep1, pep2, dna1, dna2, upstream, downstream, homology_length, five_prime_padding, three_prime_padding, primer_length, oligo_length))
 
 def translate(dna_seq): 
     dna_seq = dna_seq.upper()
@@ -295,11 +296,16 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument('gene1_filestem', type=str,
-                        help='File stem for gene 1. Ensure proper naming of <GENE1_FILESTEM>.pep.fasta and <GENE1_FILESTEM>.cdna.fasta')
+                        help='File stem for gene 1. Ensure proper naming of <GENE1_FILESTEM>.fasta')
     parser.add_argument('gene2_filestem', type=str,
-                        help='File stem for gene 2. Ensure proper naming of <GENE2_FILESTEM>.pep.fasta and <GENE2_FILESTEM>.cdna.fasta')
+                        help='File stem for gene 2. Ensure proper naming of <GENE2_FILESTEM>.fasta')
     parser.add_argument("--debug", 
                         help="Assist with debugging by increasing output verbosity",
+                        action="store_true")
+    parser.add_argument("--deletion", 
+                        help='''Only generate RTs that are a deletion (second sequence start point is >= the
+                        end point of the first''',
+                        default=False,
                         action="store_true")
     parser.add_argument("--max-indel",
                         type=int,
@@ -506,6 +512,7 @@ if __name__ == "__main__":
 
     # convert to unique list
     combos = list(set(combos))
+
 
     RTs = generate_repair_templates(combos, args.gene1_filestem, args.gene2_filestem, pep1.seq, pep2.seq, dna1.seq, dna2.seq, upstream.seq, downstream.seq, homology_length, args.five_prime_padding, args.three_prime_padding, args.primer_length, args.oligo_length)
 
