@@ -121,7 +121,7 @@ class mutagenic_repair_template:
         self.leftArm = leftArm
         self.insertedCodon = insertedCodon
         self.rightArm = rightArm
-        self.header = ">%s_%s_to_%s_SNP=%s" % (self.codonPosition, self.replacedAA, self.insertedAA, self.singleSNPmutation)
+        self.header = ">%s:%s_%s_to_%s_SNP=%s" % (self.codonPosition, self.codonPosition+2, self.replacedAA, self.insertedAA, self.singleSNPmutation)
         self.RTseq = self.leftArm + self.insertedCodon + self.rightArm 
         # commented version for debugging only
         #self.formatted = self.header+'\n' + '\n'.join([self.leftArm, self.insertedCodon, self.rightArm])
