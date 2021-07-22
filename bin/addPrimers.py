@@ -38,10 +38,19 @@ def importSkpp():
             skppR[N] = seq
     return (skppF, skppR)
 
+def revcomp(seq):
+    pairs = {
+        "A" : "T",
+        "T" : "A",
+        "C" : "G",
+        "G" : "C"
+    }
+    return ''.join([pairs[x] for x in seq.upper()[::-1]])
+
 skppF, skppR = importSkpp()
 
 i = RTfasta(RTfastaFilename)
 
 for header, repairTemplate in i.RTs:
-    oligo = skppF[N] + repairTemplate + skppR[N]
+    oligo = skppF[N] + repairTemplate + revcomp(skppR[N])
     print("%s_skpp-%s\t%s" % (header, N, oligo))
