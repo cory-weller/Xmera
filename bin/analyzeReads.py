@@ -5,6 +5,8 @@ import regex as re
 import gzip
 import bisect
 
+infile = "example.fastq"
+
 known_upstream =  'ACTACCGGCTGATATCATCG'
 #post_seq = 'GATCCCTGAGTAACCGGTTC'
 known_downstream = 'CCTGAGTAACCGGTTC'
@@ -40,9 +42,12 @@ class read:
     #    self.count += 1
     def extractSeq(self, fullPattern, upstreamPattern, downstreamPattern):
         self.matches = re.search(fullPattern, self.rawSeq)
-        if len(self.matches.captures()) > 1:
+        if self.matches == None:
+            print("no matches")
+            pass
+        elif len(self.matches.captures()) > 1:
             print("more than one pattern match, do what now?")
-            return(None)
+            pass
         else:
             self.extractedSeq = self.matches.captures()[0]
             #self.extractedStart, self.extractedStop = self.extractedSeq.span()
@@ -54,11 +59,11 @@ class read:
             self.postMatchStart = self.postMatches.starts()[-1]
             self.RTseq = self.extractedSeq[self.preMatchEnd : self.postMatchStart]
 
-a = read("testRead", 'TAANAGCNAAGCACCTTTCGAGAGGACGATGCCCGTGTCTAAATGATTCGACCAGCCTAAGAATGTTCAACGGCCCACTACCGGCTGATATCATCACTTTCTATTTGGGTTCGGAGGCAGGAGGGTCTAGTTTGGAGGTTGAGGACCTCAGCCTGGAGAACGCAATAGGTAAGCCATTCGATAAAACATTAGACACTACTTAGACCATTTGTGGCACCAGCTTGGAGCCAAGACTAAATCCTTAGTTCAGGATTTGAAGAATTACGAACTTTGCTGCAGTATCTCTCGGACTAGCGGCCGTCAACCTGTCTCCAAAGCCTGAGTAACCGGTTCGTGAACCATCACCCTAATCAAGTTTTTTGGGGTCGAGGTGCCGTAAAGCACTAAATCGGAACCCTAAAGGGAGCCCCCGATTTAGAGCTTGACGGGGAAAGCCGGCGAACGTGGCGAGAAAGGAAGGGAAGAAAGCGAAAGGAGCGGGCGCTAGGGCGCTGGCAAGTGTAGCGGTCACGCTGCGCGTAACCACCACACCCGCCGCGCTTAATGCGCCGCTACAGGGCGCGTCCATTCGCCATTCAGGCTGCGCAACTGTTGGGAAGGGCGATCGGTGCGGGCCTCTTCGCTATTACGCCAGCTGGCGAAAGGGGGATGTGCTGCAAGGCGATTAAGTTGGGTAACGCCAGGGTTTTCCCAGTCACGACGTTGTAAAACGACGGCCAGTGAGCGCGCGTAATACGACTCACTATAGGGCGAATTGGGTACCGGCCGCAAATTAAAGCCTTCGAGCGTCCCAAAACCTTCTCAAGCAAGGTTTTCAGTATAATGTTACATGCGTACACGCGTCTGTACAGAAAAAAAAGAAAAATTTGAAATATAAATAACGTTCTTAATACTAACATAACTATAAAAAAATAAATAGGGACCTAGACTTCAGGTTGTCTAACTCCTTCCTTTTCGGTTAGAGCGGATGTGGGGGGAGGGCGTGAACGTAAGCGTGACATAACTAATTACATGACTCGAAAACATAAAAAACAAAAAAGCACCACCGACTCGGTGCCACTTTTCAAGTTGATAACGGACTACCCAAANNA')
+# a = read("testRead", 'TAANAGCNAAGCACCTTTCGAGAGGACGATGCCCGTGTCTAAATGATTCGACCAGCCTAAGAATGTTCAACGGCCCACTACCGGCTGATATCATCACTTTCTATTTGGGTTCGGAGGCAGGAGGGTCTAGTTTGGAGGTTGAGGACCTCAGCCTGGAGAACGCAATAGGTAAGCCATTCGATAAAACATTAGACACTACTTAGACCATTTGTGGCACCAGCTTGGAGCCAAGACTAAATCCTTAGTTCAGGATTTGAAGAATTACGAACTTTGCTGCAGTATCTCTCGGACTAGCGGCCGTCAACCTGTCTCCAAAGCCTGAGTAACCGGTTCGTGAACCATCACCCTAATCAAGTTTTTTGGGGTCGAGGTGCCGTAAAGCACTAAATCGGAACCCTAAAGGGAGCCCCCGATTTAGAGCTTGACGGGGAAAGCCGGCGAACGTGGCGAGAAAGGAAGGGAAGAAAGCGAAAGGAGCGGGCGCTAGGGCGCTGGCAAGTGTAGCGGTCACGCTGCGCGTAACCACCACACCCGCCGCGCTTAATGCGCCGCTACAGGGCGCGTCCATTCGCCATTCAGGCTGCGCAACTGTTGGGAAGGGCGATCGGTGCGGGCCTCTTCGCTATTACGCCAGCTGGCGAAAGGGGGATGTGCTGCAAGGCGATTAAGTTGGGTAACGCCAGGGTTTTCCCAGTCACGACGTTGTAAAACGACGGCCAGTGAGCGCGCGTAATACGACTCACTATAGGGCGAATTGGGTACCGGCCGCAAATTAAAGCCTTCGAGCGTCCCAAAACCTTCTCAAGCAAGGTTTTCAGTATAATGTTACATGCGTACACGCGTCTGTACAGAAAAAAAAGAAAAATTTGAAATATAAATAACGTTCTTAATACTAACATAACTATAAAAAAATAAATAGGGACCTAGACTTCAGGTTGTCTAACTCCTTCCTTTTCGGTTAGAGCGGATGTGGGGGGAGGGCGTGAACGTAAGCGTGACATAACTAATTACATGACTCGAAAACATAAAAAACAAAAAAGCACCACCGACTCGGTGCCACTTTTCAAGTTGATAACGGACTACCCAAANNA')
 
 # re.findall(pattern, seqs[0][1])
 
-a.extractSeq(fullPattern, upstreamPattern, downstreamPattern)
+# a.extractSeq(fullPattern, upstreamPattern, downstreamPattern)
 
 
 class reads:
@@ -80,16 +85,17 @@ class reads:
         print("Importing gzipped fastq sequences from %s" % self.filename)
         with gzip.open(self.filename, 'rb') as f:
             for lines in itertools.zip_longest(*[f]*4):      
-                raw_seq = lines[1].strip()
-                if raw_seq not in self.all:
-                    bisect.insort(self.all, read(raw_seq))
+                rawSeq = lines[1].strip()
+                if rawSeq not in self.all:
+                    self.all.append(read(readName, rawSeq))
     def importFastq(self):
         print("Importing fastq sequences from %s" % self.filename)
         with open(self.filename, 'r') as f:
             for lines in itertools.zip_longest(*[f]*4):      
-                raw_seq = lines[1].strip()
-                if raw_seq not in self.all:
-                    bisect.insort(self.all, read(raw_seq))
+                rawSeq = lines[1].strip()
+                if rawSeq not in self.all:
+                    readName = lines[0].strip()
+                    self.all.append(read(readName, rawSeq))
     def importGzipFasta(self):
         print("Importing gzipped fasta sequences from %s" % self.filename)
         with gzip.open(self.filename, 'rb') as f:
@@ -104,10 +110,10 @@ class reads:
             samples = [(x[0], ''.join(x[1:])) for x in samples]
             for i in samples:
                 readName = i[0]
-                readSeq = i[1]
-                self.all.append(read(readName, readSeq))
+                rawSeq = i[1]
+                self.all.append(read(readName, rawSeq))
 
-a = reads("example.fasta")
+a = reads("example.fastq")
 if a.gzip == True:
     if a.extension == "fasta":
         a.importGzipFasta()
@@ -122,6 +128,10 @@ else:
 fullPattern = re.compile("""(%s[ACTGN]{%s,}%s){e<=%s}""" % (known_upstream, expectedLength, known_downstream, fullTolerance))
 upstreamPattern = re.compile("""(%s){e<=%s}""" % (known_upstream, knownUpstreamTolerance))
 downstreamPattern = re.compile("""(%s){e<=%s}""" % (known_downstream, knownDownstreamTolerance))
+
+b = a.all[0]
+
+b.extractSeq(fullPattern, upstreamPattern, downstreamPattern)
 
 # iterate through reads and extract known flanking regions
 for i in a.all:
