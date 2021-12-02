@@ -5,14 +5,14 @@ import regex as re
 import gzip
 import bisect
 
-infile = "example.fastq"
+infile = "SNPsOligoLib1.assembled.fastq"
 
 known_upstream =  'ACTACCGGCTGATATCATCG'
 #post_seq = 'GATCCCTGAGTAACCGGTTC'
 known_downstream = 'CCTGAGTAACCGGTTC'
 fullTolerance = 2
-knownUpstreamTolerance = 1
-knownDownstreamTolerance = 1
+knownUpstreamTolerance = 2
+knownDownstreamTolerance = 2
 
 expectedLength = 150
 
@@ -43,14 +43,13 @@ class read:
     def extractSeq(self, fullPattern, upstreamPattern, downstreamPattern):
         self.matches = re.search(fullPattern, self.rawSeq)
         if self.matches == None:
-            print("no matches")
-            pass
+            self.RTseq = None
+            #print("no matches")
         elif len(self.matches.captures()) > 1:
-            print("more than one pattern match, do what now?")
-            pass
+            self.RTseq = None
+            #print("more than one pattern match, do what now?")
         else:
             self.extractedSeq = self.matches.captures()[0]
-            #self.extractedStart, self.extractedStop = self.extractedSeq.span()
             self.preMatches = re.search(upstreamPattern, self.extractedSeq)
             self.preMatchString = self.preMatches.captures()[0]
             self.preMatchEnd = self.preMatches.ends()[0]
@@ -58,6 +57,8 @@ class read:
             self.postMatchString = self.postMatches.captures()[-1]
             self.postMatchStart = self.postMatches.starts()[-1]
             self.RTseq = self.extractedSeq[self.preMatchEnd : self.postMatchStart]
+    def printRT(self):
+        print(self.RTseq)
 
 # a = read("testRead", 'TAANAGCNAAGCACCTTTCGAGAGGACGATGCCCGTGTCTAAATGATTCGACCAGCCTAAGAATGTTCAACGGCCCACTACCGGCTGATATCATCACTTTCTATTTGGGTTCGGAGGCAGGAGGGTCTAGTTTGGAGGTTGAGGACCTCAGCCTGGAGAACGCAATAGGTAAGCCATTCGATAAAACATTAGACACTACTTAGACCATTTGTGGCACCAGCTTGGAGCCAAGACTAAATCCTTAGTTCAGGATTTGAAGAATTACGAACTTTGCTGCAGTATCTCTCGGACTAGCGGCCGTCAACCTGTCTCCAAAGCCTGAGTAACCGGTTCGTGAACCATCACCCTAATCAAGTTTTTTGGGGTCGAGGTGCCGTAAAGCACTAAATCGGAACCCTAAAGGGAGCCCCCGATTTAGAGCTTGACGGGGAAAGCCGGCGAACGTGGCGAGAAAGGAAGGGAAGAAAGCGAAAGGAGCGGGCGCTAGGGCGCTGGCAAGTGTAGCGGTCACGCTGCGCGTAACCACCACACCCGCCGCGCTTAATGCGCCGCTACAGGGCGCGTCCATTCGCCATTCAGGCTGCGCAACTGTTGGGAAGGGCGATCGGTGCGGGCCTCTTCGCTATTACGCCAGCTGGCGAAAGGGGGATGTGCTGCAAGGCGATTAAGTTGGGTAACGCCAGGGTTTTCCCAGTCACGACGTTGTAAAACGACGGCCAGTGAGCGCGCGTAATACGACTCACTATAGGGCGAATTGGGTACCGGCCGCAAATTAAAGCCTTCGAGCGTCCCAAAACCTTCTCAAGCAAGGTTTTCAGTATAATGTTACATGCGTACACGCGTCTGTACAGAAAAAAAAGAAAAATTTGAAATATAAATAACGTTCTTAATACTAACATAACTATAAAAAAATAAATAGGGACCTAGACTTCAGGTTGTCTAACTCCTTCCTTTTCGGTTAGAGCGGATGTGGGGGGAGGGCGTGAACGTAAGCGTGACATAACTAATTACATGACTCGAAAACATAAAAAACAAAAAAGCACCACCGACTCGGTGCCACTTTTCAAGTTGATAACGGACTACCCAAANNA')
 
@@ -113,7 +114,8 @@ class reads:
                 rawSeq = i[1]
                 self.all.append(read(readName, rawSeq))
 
-a = reads("example.fastq")
+
+a = reads(infile)
 if a.gzip == True:
     if a.extension == "fasta":
         a.importGzipFasta()
@@ -129,10 +131,18 @@ fullPattern = re.compile("""(%s[ACTGN]{%s,}%s){e<=%s}""" % (known_upstream, expe
 upstreamPattern = re.compile("""(%s){e<=%s}""" % (known_upstream, knownUpstreamTolerance))
 downstreamPattern = re.compile("""(%s){e<=%s}""" % (known_downstream, knownDownstreamTolerance))
 
-b = a.all[0]
 
+for i in a.all:
+    i.extractSeq(fullPattern, upstreamPattern, downstreamPattern)
+    if i.RTseq != None:
+        print(i.RTseq)
+
+    #i.extractSeq(fullPattern, upstreamPattern, downstreamPattern)
+    #i.printRT()
+    #print(i.RTseq)
+exit()
 b.extractSeq(fullPattern, upstreamPattern, downstreamPattern)
-
+a.all[3].extractSeq(fullPattern, upstreamPattern, downstreamPattern)
 # iterate through reads and extract known flanking regions
 for i in a.all:
     regex_pattern
