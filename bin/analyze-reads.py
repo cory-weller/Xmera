@@ -4,26 +4,10 @@ import itertools
 import regex as re
 import gzip
 import bisect
+import sys
 
-infile = "SNPsOligoLib1.assembled.fastq"
-
-known_upstream =  'ACTACCGGCTGATATCATCG'
-#post_seq = 'GATCCCTGAGTAACCGGTTC'
-known_downstream = 'CCTGAGTAACCGGTTC'
-fullTolerance = 2
-knownUpstreamTolerance = 2
-knownDownstreamTolerance = 2
-
-expectedLength = 150
-
-# find pre_seq, error <= 1, get indices (pre_start, pre_end)
-# find post_seq, error <= 1, get indices (post_start, post_end)
-# if either match multiply, ignore and give warning
-# Extract variable region as pre_end : post_start
-# take first N reads as barcodeUpstream
-# take last N reads as barcodeDownstream
-#
-
+infile = sys.argv[1]
+outfile = sys.argv[2]
 
 class fastq_read:
     def __init__(self, lines):
@@ -60,12 +44,6 @@ class read:
     def printRT(self):
         print(self.RTseq)
 
-# a = read("testRead", 'TAANAGCNAAGCACCTTTCGAGAGGACGATGCCCGTGTCTAAATGATTCGACCAGCCTAAGAATGTTCAACGGCCCACTACCGGCTGATATCATCACTTTCTATTTGGGTTCGGAGGCAGGAGGGTCTAGTTTGGAGGTTGAGGACCTCAGCCTGGAGAACGCAATAGGTAAGCCATTCGATAAAACATTAGACACTACTTAGACCATTTGTGGCACCAGCTTGGAGCCAAGACTAAATCCTTAGTTCAGGATTTGAAGAATTACGAACTTTGCTGCAGTATCTCTCGGACTAGCGGCCGTCAACCTGTCTCCAAAGCCTGAGTAACCGGTTCGTGAACCATCACCCTAATCAAGTTTTTTGGGGTCGAGGTGCCGTAAAGCACTAAATCGGAACCCTAAAGGGAGCCCCCGATTTAGAGCTTGACGGGGAAAGCCGGCGAACGTGGCGAGAAAGGAAGGGAAGAAAGCGAAAGGAGCGGGCGCTAGGGCGCTGGCAAGTGTAGCGGTCACGCTGCGCGTAACCACCACACCCGCCGCGCTTAATGCGCCGCTACAGGGCGCGTCCATTCGCCATTCAGGCTGCGCAACTGTTGGGAAGGGCGATCGGTGCGGGCCTCTTCGCTATTACGCCAGCTGGCGAAAGGGGGATGTGCTGCAAGGCGATTAAGTTGGGTAACGCCAGGGTTTTCCCAGTCACGACGTTGTAAAACGACGGCCAGTGAGCGCGCGTAATACGACTCACTATAGGGCGAATTGGGTACCGGCCGCAAATTAAAGCCTTCGAGCGTCCCAAAACCTTCTCAAGCAAGGTTTTCAGTATAATGTTACATGCGTACACGCGTCTGTACAGAAAAAAAAGAAAAATTTGAAATATAAATAACGTTCTTAATACTAACATAACTATAAAAAAATAAATAGGGACCTAGACTTCAGGTTGTCTAACTCCTTCCTTTTCGGTTAGAGCGGATGTGGGGGGAGGGCGTGAACGTAAGCGTGACATAACTAATTACATGACTCGAAAACATAAAAAACAAAAAAGCACCACCGACTCGGTGCCACTTTTCAAGTTGATAACGGACTACCCAAANNA')
-
-# re.findall(pattern, seqs[0][1])
-
-# a.extractSeq(fullPattern, upstreamPattern, downstreamPattern)
-
 
 class reads:
     def __init__(self, f):
@@ -84,19 +62,21 @@ class reads:
         self.entries = {}
     def importGzipFastq(self):
         print("Importing gzipped fastq sequences from %s" % self.filename)
-        with gzip.open(self.filename, 'rb') as f:
+        with gzip.open(self.filename + '.gz', 'rb') as f:
             for lines in itertools.zip_longest(*[f]*4):      
-                rawSeq = lines[1].strip()
-                if rawSeq not in self.all:
-                    self.all.append(read(readName, rawSeq))
+                rawSeq = lines[1].strip().decode()
+                try:
+                    print("\t".join(splitSeq(i.rawSeq)))
+                except:
+                    pass
+                #self.all.append(read('nullName', rawSeq))
     def importFastq(self):
         print("Importing fastq sequences from %s" % self.filename)
         with open(self.filename, 'r') as f:
             for lines in itertools.zip_longest(*[f]*4):      
                 rawSeq = lines[1].strip()
-                if rawSeq not in self.all:
-                    readName = lines[0].strip()
-                    self.all.append(read(readName, rawSeq))
+                readName = lines[0].strip()
+                self.all.append(read(readName, rawSeq))
     def importGzipFasta(self):
         print("Importing gzipped fasta sequences from %s" % self.filename)
         with gzip.open(self.filename, 'rb') as f:
@@ -114,47 +94,83 @@ class reads:
                 rawSeq = i[1]
                 self.all.append(read(readName, rawSeq))
 
+plasmidLtolerance = 1
+plasmidRtolerance = 1
+sublibraryLtolerance = 1
+sublibraryRtolerance = 2
+sublibraryLmin = 15
+sublibraryLmax = 15
+sublibraryRmin = 15
+sublibraryRmax = 15
 
-a = reads(infile)
-if a.gzip == True:
-    if a.extension == "fasta":
-        a.importGzipFasta()
-    elif a.extension == "fastq":
-        a.importGzipFastq()
-else:
-    if a.extension == "fasta":
-        a.importFasta()
-    elif a.extension == "fastq":
-        a.importFastq()
+plasmidL = ['ACTACCGGCTGATATCATCG']
+sublibraryL = ['CGGAGGCAGGAGGGT', 'GCGGGTCACTTGGGT', 'CCGGGACCAGGCTCT']
+sublibraryR = ['GGACTAGCGGCCGTC', 'GACAGTGGACCGGGC', 'GTCCCGCCGATCCTG']
+plasmidR = ['CCTGAGTAACCGGTTC']
 
-fullPattern = re.compile("""(%s[ACTGN]{%s,}%s){e<=%s}""" % (known_upstream, expectedLength, known_downstream, fullTolerance))
-upstreamPattern = re.compile("""(%s){e<=%s}""" % (known_upstream, knownUpstreamTolerance))
-downstreamPattern = re.compile("""(%s){e<=%s}""" % (known_downstream, knownDownstreamTolerance))
+pPlasmidL = re.compile(r"""\L<plasmidL>{d<=%s}""" % (plasmidLtolerance), plasmidL=plasmidL)
+pPlasmidR = re.compile(r"""\L<plasmidR>{d<=%s}""" % (plasmidRtolerance), plasmidR=plasmidR)
+pSublibraryL = re.compile(r"""\L<sublibraryL>""", sublibraryL=sublibraryL)
+pSublibraryR = re.compile(r"""\L<sublibraryR>""", sublibraryR=sublibraryR)
 
-
-for i in a.all:
-    i.extractSeq(fullPattern, upstreamPattern, downstreamPattern)
-    if i.RTseq != None:
-        print(i.RTseq)
-
-    #i.extractSeq(fullPattern, upstreamPattern, downstreamPattern)
-    #i.printRT()
-    #print(i.RTseq)
-exit()
-b.extractSeq(fullPattern, upstreamPattern, downstreamPattern)
-a.all[3].extractSeq(fullPattern, upstreamPattern, downstreamPattern)
-# iterate through reads and extract known flanking regions
-for i in a.all:
-    regex_pattern
+def splitSeq(myseq):
+    # Trim left plasmid sequence
+    matchPlasmidL = re.search(pPlasmidL, myseq).captures()[0]
+    myseq = ''.join(myseq.split(matchPlasmidL)[1:])
+    # Trim right plasmid sequence
+    matchPlasmidR = re.search(pPlasmidR, myseq).captures()[-1]
+    myseq = ''.join(myseq.split(matchPlasmidR)[:-1])
+    # Split on (sublibraryL) into (L barcode, remainder) 
+    matchSublibraryL = re.search(pSublibraryL, myseq).captures()[0]
+    barcodeL, myseq = myseq.split(matchSublibraryL)
+    # Split on (sublibraryR) into (RT, barcodeR)
+    matchSublibraryR = re.search(pSublibraryR, myseq).captures()[-1]
+    RT, barcodeR = myseq.split(matchSublibraryR)
+    return([matchPlasmidL, barcodeL, matchSublibraryL, RT, matchSublibraryR, barcodeR, matchPlasmidR])
 
 
-print("wait")
+print("Importing gzipped fastq sequences from %s" % infile)
+with open(infile, 'r') as f:
+    with open(outfile, 'w') as o:
+        for lines in itertools.zip_longest(*[f]*4):      
+            rawSeq = lines[1].strip()
+            try:
+                o.write("\t".join(splitSeq(rawSeq))+"\n")
+            except:
+                pass
+                #print("""error with %s""" % (rawSeq))
+
+# a = reads(infile)
+# if a.gzip == True:
+#     if a.extension == "fasta":
+#         a.importGzipFasta()
+#     elif a.extension == "fastq":
+#         a.importGzipFastq()
+# else:
+#     if a.extension == "fasta":
+#         a.importFasta()
+#     elif a.extension == "fastq":
+#         a.importFastq()
+
+
+
+
+
+
+# barcodes = []
+# 
+# for i in a.all:
+#     try:
+#         print("\t".join(splitSeq(i.rawSeq)))
+#     except:
+#         pass
+
 
 exit()
 
 # input = readsFile(inFileName)
 
-
+# make sure L and R sublibrary pair are concordant (i.e. from same pair)
 
 # def importReads(filename):
 #     if getFiletype(filename) in ["fastq", "fq"
