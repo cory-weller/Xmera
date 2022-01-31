@@ -4,26 +4,147 @@ library(data.table)
 library(ggplot2)
 library(foreach)
 
-fiveFOAfilename <- '5FOApool.splitreads.tab'
-glucoseFilename <- 'glucosepool.splitreads.tab'
+fiveFOAfilename <- 'data/processed/5FOApool-splitreads.tab'
+glucoseFilename <- 'data/processed/glucosepool-splitreads.tab'
+galactoseFilename <- 'data/processed/galactosepool-splitreads.tab'
 
-dat <- fread(RTfilename, header=FALSE)
+
 splitreadsHeader <- c('plasmidL', 'barcodeL', 'sublibraryL', 'RT', 'sublibraryR', 'barcodeR', 'plasmidR')
-setnames(dat, splitreadsHeader)
 
-# 2.48 M (2484722) Reads with perfect sublibrary seqs
+
+glu <- fread(glucoseFilename)
+setnames(glu, splitreadsHeader)
+glu[, type := "GLU"]
+
+gal <- fread(galactoseFilename)
+setnames(gal, splitreadsHeader)
+gal[, type := "GAL"]
+
+fiveFOA <- fread(fiveFOAfilename)
+setnames(fiveFOA, splitreadsHeader)
+fiveFOA[, type := "fiveFOA"]
+
+dat <- rbindlist(list(glu, gal, fiveFOA))
+
+rm(glu)
+rm(gal)
+rm(fiveFOA)
+gc()
+
+# Number of reads per sample:
+dat[, .N, by=type]
+#       type       N
+# 1:     GLU 3358450
+# 2:     GAL 3612224
+# 3: fiveFOA 2545790
+
+# Calculate number of reads per sample
+GLU_reads <- dat[, .N, by=type][type=='GLU', N]
+GAL_reads <- dat[, .N, by=type][type=='GAL', N]
+fiveFOA_reads <- dat[, .N, by=type][type=='fiveFOA', N]
+
 
 # Exclude any seqs with N in repair template
 dat <- dat[! RT %like% 'N']
-# 2.48 M (2483901) Reads remaining
+
+# Remaining reads per sample:
+dat[, .N, by=type]
+#       type       N
+# 1:     GLU 3357347
+# 2:     GAL 3611067
+# 3: fiveFOA 2544950
+
+
 
 # Exclude any seqs where barcodeL doesn't end with 'GGTT' or barcodeR doesn't begin with 'AACC'
 dat <- dat[barcodeL %like% 'GGTT$' & barcodeR %like% '^AACC']
-# 2.42 M (2429735) Reads remaining
+
+
+dat[, .N, by=type]
+#       type       N
+# 1:     GLU 3271184
+# 2:     GAL 3527316
+# 3: fiveFOA 2489438
+
+
 
 # Calculate sequenced repair template length
 dat[, RTlength := nchar(RT)]
-dat[, RTlengthBin := cut(RTlength, breaks=seq(0,250,5))]
+
+dat[RTlength==163, .N, by=type]
+#       type       N
+# 1:     GLU 1598595
+# 2:     GAL 1844764
+# 3: fiveFOA 1297521
+
+dat[, type := factor(type, levels=c("GLU", "GAL", "fiveFOA"))]
+
+# Filter to only include 163 bp RTs
+dat <- dat[RTlength == 163]
+
+# Remove unnecessary cols to cut down on mem use
+dat[, c('plasmidL', 'plasmidR', 'sublibraryL') := NULL]
+dat[, sublibraryR := as.numeric(as.factor(sublibraryR))]
+
+
+
+# Load printed oligos
+printedOligos <- fread('../ERCC4.RT.txt', col.names=c('ID','oligo'))
+printedOligos[, RTlength := nchar(oligo) - 30]
+
+
+# Only concern ourselves with 163 bp oligos for now:
+printedOligos <- printedOligos[RTlength == 163]
+printedOligos[, RT := substring(oligo, 16, 178)]
+printedOligos[, RT := toupper(RT)]
+
+
+
+# only includ perfect matches
+dat <- dat[RT %in% printedOligos[,RT]]
+
+dat[, .N, by=type][type==GLU
+#       type       N
+# 1:     GLU 1145298
+# 2:     GAL 1336999
+# 3: fiveFOA  933125
+# ~72% of 163 bp oligos are perfect match to 'complete list' of RTs
+
+dat[, .N, by=list(RT, type)]
+
+dat[, .N, by=list(type, RT)]
+
+tmp <- dat[, .N, by=list(type,RT)]
+o <- foreach(threshold=c(1, 10, 100, 1000), .combine='rbind') %do% {
+    tmp2 <- tmp[N >= threshold][, .N, by=type]
+    tmp2[, 'threshold' := threshold]
+    return(tmp2)
+}
+
+o[, threshold := factor(threshold)]
+
+o[type=="GLU", N := N*(1e6/GLU_reads)]
+o[type=="GAL", N := N*(1e6/GAL_reads)]
+o[type=="fiveFOA", N := N*(1e6/fiveFOA_reads)]
+
+ggplot(o, aes(x=type, y=N, color=threshold, group=threshold)) + geom_point() + geom_line() +
+labs(x="sample", y="Unique RTs", color="minimum_threshhold") +
+theme_few(12)
+
+
+perfMatch[, homologyL := substr(RT, 1, 80)]
+perfMatch[, homologyR := substr(RT, 84, 163)]
+perfMatch[, arms := paste0(homologyL, homologyR)]
+
+
+
+
+
+
+
+
+
+#dat[, RTlengthBin := cut(RTlength, breaks=seq(0,250,5))]
 
 # Log10 transformation
 ggplot(dat[, .N, by=RTlengthBin], aes(x=RTlengthBin, y=N)) +
@@ -43,9 +164,6 @@ labs(   x='Repair Template Length',
         title='Repair Template Length Distribution'
     ) +
 theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
-
-# Calculate inteded repair template length
-printedOligos <- fread('ERCC4.RT.txt', col.names=c('ID','oligo'))
 
 # Calculate inteded RT length
 printedOligos[, RTlength := nchar(oligo) - 30]
@@ -80,13 +198,6 @@ printedOligos <- printedOligos[RTlength == 163]
 printedOligos[, RT := substring(oligo, 16, 178)]
 printedOligos[, RT := toupper(RT)]
 
-# only includ perfect matches
-perfMatch <- dat[RT %in% printedOligos[,RT]]
-perfMatch[, homologyL := substr(RT, 1, 80)]
-perfMatch[, homologyR := substr(RT, 84, 163)]
-perfMatch[, arms := paste0(homologyL, homologyR)]
-
-perfMatch[, .N, by=list(RT)]
 
 # abundance of 6158 unique RTs observed in 5FOA pool:
 RTdistribution <- perfMatch[, .N, by=RT][order(N)]
