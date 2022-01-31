@@ -103,7 +103,7 @@ sublibraryLmax = 15
 sublibraryRmin = 15
 sublibraryRmax = 15
 
-plasmidL = ['ACTACCGGCTGATATCATCG']
+plasmidL = ['ACTACCGGCTGATATCATC']
 sublibraryL = ['CGGAGGCAGGAGGGT', 'GCGGGTCACTTGGGT', 'CCGGGACCAGGCTCT']
 sublibraryR = ['GGACTAGCGGCCGTC', 'GACAGTGGACCGGGC', 'GTCCCGCCGATCCTG']
 plasmidR = ['CCTGAGTAACCGGTTC']
