@@ -3,99 +3,112 @@
 library(data.table)
 library(ggplot2)
 library(foreach)
+library(ggthemes)
 
-fiveFOAfilename <- 'data/processed/5FOApool-splitreads.tab'
-glucoseFilename <- 'data/processed/glucosepool-splitreads.tab'
-galactoseFilename <- 'data/processed/galactosepool-splitreads.tab'
+fiveFOAfilename <- 'data/processed/5FOApool-splitreads.tab.gz'
+glucoseFilename <- 'data/processed/glucosepool-splitreads.tab.gz'
+galactoseFilename <- 'data/processed/galactosepool-splitreads.tab.gz'
+SNPPoolFilename <- 'data/processed/SNPs-pool-splitreads.tab.gz'
+notSNPPoolFilename <- 'data/processed/not-SNPs-pool-splitreads.tab.gz'
+indelPoolFilename <- 'data/processed/indel-pool-splitreads.tab.gz'
+aggregateFilename <- 'data/processed/combined-splitreads.tab.gz'
+librariesFilename <- 'src/libraries.csv'
+
+splitreadsHeader.g <- c('plasmidL', 'barcodeL', 'sublibraryL', 'RT', 'sublibraryR', 'barcodeR', 'plasmidR')
+colOrder.g <- c('barcodeL', 'RT', 'barcodeR', 'timepoint', 'library', 'treatment')
+
+libs.g <- fread(librariesFilename)
+setkey(libs.g, library, treatment)
 
 
-splitreadsHeader <- c('plasmidL', 'barcodeL', 'sublibraryL', 'RT', 'sublibraryR', 'barcodeR', 'plasmidR')
 
+processReads <- function(readsFilename, libraries, timepoint, treatments) {
+    dat.all <- fread(readsFilename)
+    setnames(dat.all, splitreadsHeader.g)
 
-glu <- fread(glucoseFilename)
-setnames(glu, splitreadsHeader)
-glu[, type := "GLU"]
+    output <- foreach(library.i=libraries, .combine='rbind') %do% {
+        foreach(treatment.i=treatments, .combine='rbind') %do% {
+            libs.i <- libs.g[.(library.i, treatment.i)]
+            barcodeLlength <- libs.i[,LbarcodeLength]
+            barcodeRlength <- libs.i[,RbarcodeLength] 
+            dat <- merge(dat.all, libs.i, by=c('sublibraryL', 'sublibraryR'))
+            dat[, c('plasmidL', 'sublibraryL', 'sublibraryR', 'plasmidR', 'primer') := NULL]
+            dat[, barcodeLsplit := tstrsplit(barcodeL, split=libs.i[,'LbarcodeEnd'])[1]]
+            dat[, barcodeRsplit := tstrsplit(barcodeR, split=libs.i[,'RbarcodeStart'])[2]]
+            dat <- dat[nchar(barcodeLsplit) == barcodeLlength]
+            dat <- dat[nchar(barcodeRsplit) == barcodeRlength]
 
-gal <- fread(galactoseFilename)
-setnames(gal, splitreadsHeader)
-gal[, type := "GAL"]
+            dat[, c('barcodeL', 'barcodeR') := NULL]
+            setnames(dat, 'barcodeLsplit', 'barcodeL')
+            setnames(dat, 'barcodeRsplit', 'barcodeR')
+            dat[, c('LbarcodeLength','RbarcodeLength','LbarcodeEnd','RbarcodeStart') := NULL]
+            dat[, 'timepoint' := timepoint]
+            dat[, 'library' := library.i]
+            dat[, 'treatment' := treatment.i]
+            setcolorder(dat, colOrder.g)
+            return(dat[])
+        }
+    }
+    return(output)
+}
 
-fiveFOA <- fread(fiveFOAfilename)
-setnames(fiveFOA, splitreadsHeader)
-fiveFOA[, type := "fiveFOA"]
+if(! file.exists(aggregateFilename)) {
+    # get reads at each stage of experiment
+    glu <- processReads(glucoseFilename, c('SNP','not-SNP','indel'), c('GLU'), 'all')
+    gal <- processReads(galactoseFilename, c('SNP','not-SNP','indel'), c('GAL'), 'all')
+    fiveFOA <- processReads(fiveFOAfilename, c('SNP','not-SNP','indel'), c('fiveFOA'), 'all')
 
-dat <- rbindlist(list(glu, gal, fiveFOA))
+    # get plasmid pool reads
+    plasmidPoolSNP <- processReads(SNPPoolFilename, 'SNP', 'plasmid-pool', 'all')
+    plasmidPoolNotSNP <- processReads(notSNPPoolFilename, 'not-SNP', 'plasmid-pool', 'all')
+    plasmidPoolIndel <- processReads(indelPoolFilename, 'indel', 'plasmid-pool', 'all')
 
-rm(glu)
-rm(gal)
-rm(fiveFOA)
-gc()
+    dat <- rbindlist(list(glu, gal, fiveFOA, plasmidPoolSNP, plasmidPoolNotSNP, plasmidPoolIndel)) 
+    fwrite(dat, file=aggregateFilename, quote=F, row.names=F, col.names=T)
+} else {
+    dat <- fread(aggregateFilename)
+}
+
+dat.tmp <- dat[, .N, by=list(barcodeL, barcodeR, timepoint)][, .N, by=list(timepoint)]
+dat.tmp[, timepoint := factor(timepoint, levels=c('plasmid-pool','GLU','GAL','fiveFOA'))]
+g <- ggplot(dat.tmp, aes(x=timepoint, y=N)) + geom_point() +
+labs(x='timepoint', y='N unique barcodes')
+
+ggsave(g, file='uniqueBCs.png')
 
 # Number of reads per sample:
-dat[, .N, by=type]
-#       type       N
-# 1:     GLU 3358450
-# 2:     GAL 3612224
-# 3: fiveFOA 2545790
-
-# Calculate number of reads per sample
-GLU_reads <- dat[, .N, by=type][type=='GLU', N]
-GAL_reads <- dat[, .N, by=type][type=='GAL', N]
-fiveFOA_reads <- dat[, .N, by=type][type=='fiveFOA', N]
+dat[, .N, by=list(timepoint, library)]
+#        timepoint library       N
+#  1:          GLU     SNP 1869391
+#  2:          GLU not-SNP  453316
+#  3:          GLU   indel   45842
+#  4:          GAL     SNP 1176513
+#  5:          GAL not-SNP 1118400
+#  6:          GAL   indel   45991
+#  7:      fiveFOA     SNP  675307
+#  8:      fiveFOA not-SNP  989537
+#  9:      fiveFOA   indel  132251
+# 10: plasmid-pool     SNP  836022
+# 11: plasmid-pool not-SNP  546227
+# 12: plasmid-pool   indel  427393
 
 
 # Exclude any seqs with N in repair template
 dat <- dat[! RT %like% 'N']
 
-# Remaining reads per sample:
-dat[, .N, by=type]
-#       type       N
-# 1:     GLU 3357347
-# 2:     GAL 3611067
-# 3: fiveFOA 2544950
-
-
-
-# Exclude any seqs where barcodeL doesn't end with 'GGTT' or barcodeR doesn't begin with 'AACC'
-dat <- dat[barcodeL %like% 'GGTT$' & barcodeR %like% '^AACC']
-
-
-dat[, .N, by=type]
-#       type       N
-# 1:     GLU 3271184
-# 2:     GAL 3527316
-# 3: fiveFOA 2489438
-
-
 
 # Calculate sequenced repair template length
 dat[, RTlength := nchar(RT)]
 
-dat[RTlength==163, .N, by=type]
-#       type       N
-# 1:     GLU 1598595
-# 2:     GAL 1844764
-# 3: fiveFOA 1297521
-
-dat[, type := factor(type, levels=c("GLU", "GAL", "fiveFOA"))]
-
-# Filter to only include 163 bp RTs
-dat <- dat[RTlength == 163]
-
-# Remove unnecessary cols to cut down on mem use
-dat[, c('plasmidL', 'plasmidR', 'sublibraryL') := NULL]
-dat[, sublibraryR := as.numeric(as.factor(sublibraryR))]
 
 
 
 # Load printed oligos
 printedOligos <- fread('../ERCC4.RT.txt', col.names=c('ID','oligo'))
-printedOligos[, RTlength := nchar(oligo) - 30]
 
-
-# Only concern ourselves with 163 bp oligos for now:
-printedOligos <- printedOligos[RTlength == 163]
-printedOligos[, RT := substring(oligo, 16, 178)]
+# exclude first 15 and last 15 nucleotides
+printedOligos[, endpoint := nchar(oligo) - 15]
+printedOligos[, RT := substring(oligo, 16, endpoint)]
 printedOligos[, RT := toupper(RT)]
 
 
@@ -103,38 +116,77 @@ printedOligos[, RT := toupper(RT)]
 # only includ perfect matches
 dat <- dat[RT %in% printedOligos[,RT]]
 
-dat[, .N, by=type][type==GLU
-#       type       N
-# 1:     GLU 1145298
-# 2:     GAL 1336999
-# 3: fiveFOA  933125
-# ~72% of 163 bp oligos are perfect match to 'complete list' of RTs
-
-dat[, .N, by=list(RT, type)]
-
-dat[, .N, by=list(type, RT)]
-
-tmp <- dat[, .N, by=list(type,RT)]
+tmp <- dat[, .N, by=list(timepoint,RT)]
 o <- foreach(threshold=c(1, 10, 100, 1000), .combine='rbind') %do% {
-    tmp2 <- tmp[N >= threshold][, .N, by=type]
+    tmp2 <- tmp[N >= threshold][, .N, by=timepoint]
     tmp2[, 'threshold' := threshold]
     return(tmp2)
 }
 
 o[, threshold := factor(threshold)]
+o[, timepoint := factor(timepoint, levels=c('plasmid-pool','GLU','GAL','fiveFOA'))]
 
-o[type=="GLU", N := N*(1e6/GLU_reads)]
-o[type=="GAL", N := N*(1e6/GAL_reads)]
-o[type=="fiveFOA", N := N*(1e6/fiveFOA_reads)]
 
-ggplot(o, aes(x=type, y=N, color=threshold, group=threshold)) + geom_point() + geom_line() +
+o.notunique <- o
+o.notunique[, type := 'unfiltered']
+
+g <- ggplot(o, aes(x=timepoint, y=N, color=threshold, group=threshold)) + geom_point() + geom_line() +
 labs(x="sample", y="Unique RTs", color="minimum_threshhold") +
+theme_few(12) +
+geom_hline(yintercept=nrow(printedOligos), linetype='dashed', alpha=0.6)
+
+ggsave(g, file='RTrepresentation.png')
+
+
+
+
+dat.cts <- dat[, .N, by=list(RT, barcodeL, barcodeR, timepoint)][order(N)]
+dat.cts[, xval := 1:.N, by=list(timepoint)]
+dat.cts[, timepoint := factor(timepoint, levels=c('plasmid-pool','GLU','GAL','fiveFOA'))]
+g2 <- ggplot(dat.cts, aes(x=xval, y=N)) + geom_line() + scale_y_log10() + facet_grid(.~timepoint) +
+labs(x='unique combinations of RT and barcode', title='A small number of barcodes dominate the pools') +
 theme_few(12)
+ggsave(g2, file='RTtakeover.png')
 
 
-perfMatch[, homologyL := substr(RT, 1, 80)]
-perfMatch[, homologyR := substr(RT, 84, 163)]
-perfMatch[, arms := paste0(homologyL, homologyR)]
+
+
+
+# same as above, but filtering for unique barcodes
+dat <- unique(dat)
+
+tmp <- dat[, .N, by=list(timepoint,RT)]
+o <- foreach(threshold=c(1, 10, 100, 1000), .combine='rbind') %do% {
+    tmp2 <- tmp[N >= threshold][, .N, by=timepoint]
+    tmp2[, 'threshold' := threshold]
+    return(tmp2)
+}
+
+o[, threshold := factor(threshold)]
+o[, timepoint := factor(timepoint, levels=c('plasmid-pool','GLU','GAL','fiveFOA'))]
+
+o.unique <- o
+o.unique[, type := 'unique-filtered-barcode']
+
+o <- rbindlist(list(o.unique, o.notunique))
+
+g <- ggplot(o, aes(x=timepoint, y=N, color=threshold, group=threshold)) + geom_point() + geom_line() +
+labs(x="", y="RTs sampled at least (threshold) times", color="threshold") +
+theme_few(12) +
+geom_hline(yintercept=nrow(printedOligos), linetype='dashed', alpha=0.6) +
+facet_grid(.~type)
+
+ggsave(g, file='RTrepresentation.png')
+
+
+
+
+
+
+
+
+
+
 
 
 
