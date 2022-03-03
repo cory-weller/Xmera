@@ -9,20 +9,18 @@ freq_filter <- 0.0
 
 fasta_1_filename <- args[1]
 fasta_2_filename <- args[2]
+codons_filename <- args[3]
 splitName <- strsplit(fasta_2_filename, split="\\.")[[1]]
 fileStem <- paste0(splitName[1:(length(splitName)-1)], collapse=".")
 
-
-codons_filename <- "codons.txt"
-
 fasta_1 <- readLines(fasta_1_filename)
 fasta_1 <- fasta_1[2:length(fasta_1)]
-fasta_1 <- paste0(fasta_1, collapse="")
+fasta_1 <- toupper(paste0(fasta_1, collapse=""))
 fasta_1 <- strsplit(fasta_1, "(?<=.{3})", perl = TRUE)[[1]]
 
 fasta_2 <- readLines(fasta_2_filename)
 fasta_2 <- fasta_2[2:length(fasta_2)]
-fasta_2 <- paste0(fasta_2, collapse="")
+fasta_2 <- toupper(paste0(fasta_2, collapse=""))
 fasta_2 <- strsplit(fasta_2, "(?<=.{3})", perl = TRUE)[[1]]
 
 library(data.table)

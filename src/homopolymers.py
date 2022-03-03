@@ -62,7 +62,7 @@ class fasta:
         with open(filename, 'r') as infile:
             text = infile.readlines()
         self.header = text[0].replace(">","").strip()
-        self.seq = ''.join(x.rstrip() for x in text[1:])
+        self.seq = ''.join(x.rstrip() for x in text[1:]).upper()
         codons = [self.seq[x:(x+3)] for x in range(0,len(self.seq),3)]
         homopolymerDict = {
         'A|AAA|A' : 'A|AAG|A',
