@@ -32,6 +32,7 @@ From: debian:10
 
     python3 -m pip install fuzzywuzzy
     python3 -m pip install fuzzywuzzy[speedup]
+    python3 -m pip install regex
 
     unset DEBIAN_FRONTEND
 
