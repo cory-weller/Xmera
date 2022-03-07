@@ -173,8 +173,8 @@ if __name__ == "__main__":
         type=int,
         nargs='?',
         const=1,
-        default=163,
-        help='''length of combined homology arms and inserted codon (default:163)''')
+        default=186,
+        help='''length of combined homology arms and inserted codon (default:186)''')
     parser.add_argument("--downstream",
         type=str,
         nargs='?',
