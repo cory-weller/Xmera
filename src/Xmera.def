@@ -3,9 +3,8 @@ From: debian:10
 
 %runscript
 #!/bin/bash
-    echo "Starting singularity container"
     source /app/env/bin/activate
-    python3
+    python "$@"
 
 %post -c /bin/bash
     export DEBIAN_FRONTEND=noninteractive
@@ -26,13 +25,17 @@ From: debian:10
     python3 -m venv env
     chmod -R 777 /app
 
-    source env/bin/activate
+    source /app/env/bin/activate
 
     python3 -m pip install --upgrade pip
 
     python3 -m pip install fuzzywuzzy
     python3 -m pip install fuzzywuzzy[speedup]
     python3 -m pip install regex
+    python3 -m pip install pandas
+    python3 -m pip install numpy
 
     unset DEBIAN_FRONTEND
+
+%environment
 
