@@ -202,7 +202,7 @@ if __name__ == "__main__":
     ## 
     codons = pd.read_csv(   args.codons, 
                 sep = "\t",
-                header = None,
+                #header = True,
                 )
 
     codons.columns = ["triplet", "AA", "freq", "fkp", "count"]
@@ -223,8 +223,8 @@ if __name__ == "__main__":
 
     # sampleCodon(putativeCodonsTable, "F")
 
-    fasta_1 = read_fasta(args.first)
-    fasta_2 = read_fasta(args.second)
+    fasta_1 = read_fasta(args.first).upper()
+    fasta_2 = read_fasta(args.second).upper()
 
     # Assert sequences are identical length
     assert (len(fasta_1) == len(fasta_2)), "Sequences not same length!"
