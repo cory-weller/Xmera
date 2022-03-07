@@ -26,7 +26,7 @@ From: ubuntu:xenial
     export PATH="/miniconda3/bin:$PATH"
 
     # Use conda to install pip, numpy
-    conda install -y -c conda-forge pip numpy 
+    conda install -y -c conda-forge pip numpy pandas
 
     # Help conda resolving Python "import" 
     conda update --all
