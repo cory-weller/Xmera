@@ -2,16 +2,29 @@
 
 import regex as re
 import sys
+import math
 
-variant_filename = sys.argv[1]
+geneName = sys.argv[1]
+firstHomolog = sys.argv[2]
+secondHomolog = sys.argv[3]
+hgvsIdentifier = sys.argv[4]
+codonsFilename = sys.argv[5]
+totalLength = int(sys.argv[6])
+desiredArmLength = int(totalLength / 2)
+
+firstHomologFilename = "%s/%s-%s.fasta" % (geneName, geneName, firstHomolog)
+secondHomologFilename = "%s/%s-%s.fasta" % (geneName, geneName, secondHomolog)
+downstreamFilename = "%s/%s-upstream.fasta" % (geneName, geneName)
+upstreamFilename = "%s/%s-downstream.fasta" % (geneName, geneName)
+hgvsFilename = "%s/%s-%s.txt" % (geneName, geneName, hgvsIdentifier)
 
 class hgvs:
     help = "hgvs variant object"
-    def __init__(self, hgvs_text, seq1, seq2, upstreamSeq, downstreamSeq, armLength):
+    def __init__(self, hgvs_text, seq1, seq2, upstreamSeq, downstreamSeq, desiredArmLength):
         global codons
         self.upstreamSeq = upstreamSeq
         self.downstreamSeq = downstreamSeq
-        self.armLength = armLength
+        self.desiredArmLength = desiredArmLength
         self.refSeq = list(seq1)
         if ":" in hgvs_text:
             self.reference = hgvs_text.split(":")[0]
@@ -55,23 +68,33 @@ class hgvs:
             codon = dna_seq[i:i + 3] 
             protein+= table[codon]     
         return protein
-    def buildRepairTemplate(self, leftArm, middle, rightArm, upstreamSeq, downstreamSeq, armLength):
-        self.leftHA = leftArm[-armLength : ]
-        self.nLeft = armLength - len(self.leftHA)
+    def buildRepairTemplate(self, leftArm, middle, rightArm, upstreamSeq, downstreamSeq, basesInserted, desiredArmLength):
+        self.armLength = desiredArmLength
+        self.leftHA = leftArm[-self.armLength : ]
+        self.nLeft = self.armLength - len(self.leftHA)
         self.leftHA = upstreamSeq[(len(upstreamSeq) - self.nLeft):] + self.leftHA
         self.middle = middle
-        self.rightHA = rightArm[:armLength]
-        self.nRight = armLength - len(self.rightHA)
+        self.rightHA = rightArm[:self.armLength]
+        self.nRight = self.armLength - len(self.rightHA)
         self.rightHA = self.rightHA + downstreamSeq[:self.nRight]
         self.oligo = self.leftHA + self.middle.upper() + self.rightHA
+        # Ensure oligo isn't too long
+        self.extraBases = len(self.oligo) - (2*self.armLength)
+        if self.extraBases > 0:
+            self.trimEach = math.trunc(self.extraBases/2)
+            # remove N/2 from start and end:
+            self.oligo = self.oligo[self.trimEach : (-1*self.trimEach)]
+            if self.extraBases % 2 != 0:
+                self.oligo = self.oligo[1:]
         return self.oligo
 
 
 class insertion(hgvs):
     # e.g.  g.123_124insACTG
-    def __init__(self, hgvs_text, seq1, seq2, upstreamSeq, downstreamSeq, armLength):
-        super().__init__(hgvs_text, seq1, seq2, upstreamSeq, downstreamSeq, armLength)
+    def __init__(self, hgvs_text, seq1, seq2, upstreamSeq, downstreamSeq, desiredArmLength):
+        super().__init__(hgvs_text, seq1, seq2, upstreamSeq, downstreamSeq, desiredArmLength)
         i, self.insert = (re.split('ins', self.posEdit)[:2])
+        self.basesInserted = len(self.insert)
         i = [int(x) for x in i.split("_")]
         self.L = min(i) - 1
         self.R = max(i) - 1
@@ -94,17 +117,19 @@ class insertion(hgvs):
                                         self.rightArm, 
                                         self.upstreamSeq, 
                                         self.downstreamSeq, 
-                                        self.armLength)
+                                        self.basesInserted,
+                                        self.desiredArmLength)
         return a
 
 
 class duplication(hgvs):
     # treat like an insertion, where insertion is the duplicated region
-    def __init__(self, hgvs_text, seq1, seq2, upstreamSeq, downstreamSeq, armLength):
-        super().__init__(hgvs_text, seq1, seq2, upstreamSeq, downstreamSeq, armLength)
+    def __init__(self, hgvs_text, seq1, seq2, upstreamSeq, downstreamSeq, desiredArmLength):
+        super().__init__(hgvs_text, seq1, seq2, upstreamSeq, downstreamSeq, desiredArmLength)
         i = [int(x) for x in re.split('dup', self.posEdit)[0].split("_")]
         self.dupStart = min(i) - 1
         self.dupEnd = max(i) - 1
+        self.basesInserted = self.dupEnd - self.dupStart + 1
         self.insert = seq2[self.dupStart : self.dupEnd + 1]
         self.L = self.dupEnd 
         self.R = self.dupEnd + 1
@@ -126,19 +151,21 @@ class duplication(hgvs):
                                         self.middle, 
                                         self.rightArm, 
                                         self.upstreamSeq, 
-                                        self.downstreamSeq, 
-                                        self.armLength)
+                                        self.downstreamSeq,
+                                        self.basesInserted, 
+                                        self.desiredArmLength)
         return a
 
  
 class deletion(hgvs):
     # e.g.  g.123_128del
     # e.g.  g.123del
-    def __init__(self, hgvs_text, seq1, seq2, upstreamSeq, downstreamSeq, armLength):
-        super().__init__(hgvs_text, seq1, seq2, upstreamSeq, downstreamSeq, armLength)
+    def __init__(self, hgvs_text, seq1, seq2, upstreamSeq, downstreamSeq, desiredArmLength):
+        super().__init__(hgvs_text, seq1, seq2, upstreamSeq, downstreamSeq, desiredArmLength)
         i = [int(x) for x in re.split('del', self.posEdit)[0].split("_")[:2]]
         self.delStart = min(i) - 1
         self.delEnd = max(i) - 1
+        self.basesInserted = -1 * (self.delEnd - self.delStart + 1)
         self.delStartAdj = self.delStart - (self.delStart % 3)
         self.nNeeded = (3 - (self.delStart % 3)) % 3
         self.leftArm = seq1[: self.delStartAdj]
@@ -151,28 +178,29 @@ class deletion(hgvs):
                                         self.middle, 
                                         self.rightArm, 
                                         self.upstreamSeq, 
-                                        self.downstreamSeq, 
-                                        self.armLength)
+                                        self.downstreamSeq,
+                                        self.basesInserted, 
+                                        self.desiredArmLength)
         return a
 
 class substitution(hgvs):
     pass
 
 
-def generateHGVS(hgvs_text, seq1, seq2, upstreamSeq, downstreamSeq, armLength):
+def generateHGVS(hgvs_text, seq1, seq2, upstreamSeq, downstreamSeq, desiredArmLength):
         if ":" in hgvs_text:
             description = hgvs_text.split(":")[1]
         else:
             description = hgvs_text
         posEdit = description.split(".")[1]
         if ">" in posEdit:
-            return substitution(hgvs_text, seq1, seq2, upstreamSeq, downstreamSeq, armLength)
+            return substitution(hgvs_text, seq1, seq2, upstreamSeq, downstreamSeq, desiredArmLength)
         elif "del" in posEdit:
-            return deletion(hgvs_text, seq1, seq2, upstreamSeq, downstreamSeq, armLength)
+            return deletion(hgvs_text, seq1, seq2, upstreamSeq, downstreamSeq, desiredArmLength)
         elif "ins" in posEdit:
-            return insertion(hgvs_text, seq1, seq2, upstreamSeq, downstreamSeq, armLength)
+            return insertion(hgvs_text, seq1, seq2, upstreamSeq, downstreamSeq, desiredArmLength)
         elif "dup" in posEdit:
-            return duplication(hgvs_text, seq1, seq2, upstreamSeq, downstreamSeq, armLength)
+            return duplication(hgvs_text, seq1, seq2, upstreamSeq, downstreamSeq, desiredArmLength)
         else:
             if "+" in hgvs_text or "-" in hgvs_text:
                 return()
@@ -182,7 +210,7 @@ def generateHGVS(hgvs_text, seq1, seq2, upstreamSeq, downstreamSeq, armLength):
 
 # get most abundant codon per AA:
 def getAbundantCodons():
-    with open("seqs/codons.txt", "r") as infile:
+    with open(codonsFilename, "r") as infile:
         codons = {}
         for line in infile:
             triplet, AA, relativeFreq, _, _ = line.strip().split()
@@ -203,19 +231,18 @@ def importSingleSeqFasta(filename):
         return(seq)
 
 
-upstream = importSingleSeqFasta('seqs/ERCC4.upstream.fasta').lower()
-ercc4prime  = importSingleSeqFasta('seqs/ERCC4.min_homology.fasta').lower()
-ercc4 = importSingleSeqFasta('seqs/ERCC4.cds.fasta').upper()
-downstream = importSingleSeqFasta('seqs/ERCC4.downstream.fasta').lower()
-HAlength = 80
+upstream = importSingleSeqFasta(upstreamFilename).lower()
+firstHomolog = importSingleSeqFasta(firstHomologFilename).lower()
+secondHomolog = importSingleSeqFasta(secondHomologFilename).upper()
+downstream = importSingleSeqFasta(downstreamFilename).lower()
 
-with open(variant_filename, 'r') as infile:
+with open(hgvsFilename, 'r') as infile:
     for line in infile:
         variant_text = line.strip()
         if variant_text == '':
             continue
-        i =  generateHGVS(variant_text, ercc4prime, ercc4, upstream, downstream, HAlength)
+        i =  generateHGVS(variant_text, firstHomolog, secondHomolog, upstream, downstream, desiredArmLength)
         RT = i.getRT()
-        print(">ercc4:" + i.description + "\n" +  RT)
+        print(">%s:%s\n%s" % (geneName, i.description, RT))
 
-sys.exit("Exiting successfully")
+# sys.exit("Exiting successfully")
