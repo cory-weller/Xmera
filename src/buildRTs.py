@@ -117,7 +117,7 @@ def permute_peptide_fasta(fasta_text):
     return permuted_seq
 
 def run_clustal(b_alignment):
-    output = subprocess.run(["../Xmera/bin/clustalo", "-i", "-", "--outfmt", "clu"], input=b_alignment, stdout=PIPE).stdout.decode()
+    output = subprocess.run(["clustalo", "-i", "-", "--outfmt", "clu"], input=b_alignment, stdout=PIPE).stdout.decode()
     if debug:
         print(output)
     return output
@@ -406,13 +406,18 @@ if __name__ == "__main__":
                         nargs='?',
                         const=1,
                         default="all")
-    parser.add_argument("--flanking", 
-                        help='''String. Defines the file stem signifying flanking regions upstream and downstream the
-                                homologous genes, i.e. <FILE_STEM>.upstream.fasta and <FILE_STEM>.downstream.fasta''',
+    parser.add_argument("--upstream", 
+                        help='''String. Defines the file name for fasta sequence upstream of the homologous genes.'''
                         type=str,
                         nargs='?',
                         const=1,
-                        default="flanking")
+                        default=None)
+    parser.add_argument("--downstream", 
+                        help='''String. Defines the file name for fasta sequence downstream of the homologous genes.'''
+                        type=str,
+                        nargs='?',
+                        const=1,
+                        default=None)
     args = parser.parse_args()
     if args.debug:
         debug = True
@@ -438,6 +443,12 @@ if __name__ == "__main__":
     try: assert args.unique in ["protein", "dna", "all"], "ERROR: --unique must be 'prot' or 'dna'"
     except AssertionError as error: sys.exit(error)
 
+    try: assert args.upstream != None, "ERROR: --upstream required.'"
+    except AssertionError as error: sys.exit(error)
+
+    try: assert args.downstream != None, "ERROR: --downstream required.'"
+    except AssertionError as error: sys.exit(error)
+
     try: assert args.mode in ["aligned", "strict", "all", "extensive"], "ERROR: --mode must be 'aligned' 'strict' 'all' or 'extensive'"
     except AssertionError as error: sys.exit(error)
 
@@ -455,8 +466,8 @@ if __name__ == "__main__":
     missing_files = 0
     for filename in [   args.gene1_filestem + '.fasta',
                         args.gene2_filestem + '.fasta',
-                        args.flanking +  ".upstream.fasta", 
-                        args.flanking + ".downstream.fasta"]:
+                        args.upstream,
+                        args.downstream]:
         if not os.path.isfile(filename):
             sys.stderr.write("Error: File %s does not exist\n" % filename)
             missing_files += 1
@@ -491,8 +502,8 @@ if __name__ == "__main__":
     pep_txt2 = '>%s\n%s\n' % (args.gene2_filestem, pep2.seq)
 
     
-    upstream = fasta(args.flanking + ".upstream.fasta")
-    downstream = fasta(args.flanking + ".downstream.fasta")
+    upstream = fasta(args.upstream)
+    downstream = fasta(args.downstream)
 
     alignment = list(run_alignment(0, pep_txt1, pep_txt2, args.threshold_length, args.specificity))[0]
 
