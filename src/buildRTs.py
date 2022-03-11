@@ -407,13 +407,13 @@ if __name__ == "__main__":
                         const=1,
                         default="all")
     parser.add_argument("--upstream", 
-                        help='''String. Defines the file name for fasta sequence upstream of the homologous genes.'''
+                        help='''String. Defines the file name for fasta sequence upstream of the homologous genes.''',
                         type=str,
                         nargs='?',
                         const=1,
                         default=None)
     parser.add_argument("--downstream", 
-                        help='''String. Defines the file name for fasta sequence downstream of the homologous genes.'''
+                        help='''String. Defines the file name for fasta sequence downstream of the homologous genes.''',
                         type=str,
                         nargs='?',
                         const=1,
@@ -471,9 +471,6 @@ if __name__ == "__main__":
         if not os.path.isfile(filename):
             sys.stderr.write("Error: File %s does not exist\n" % filename)
             missing_files += 1
-    if not os.path.isfile("../Xmera/bin/clustalo"):
-        sys.stderr.write("Error: clustalo binary not found\n")
-        missing_files += 1
     if missing_files > 0:
         sys.exit("Aborting due to missing files\n")
     if args.repair_template_length % 2 != 0:
