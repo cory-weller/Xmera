@@ -55,6 +55,8 @@ class frameshift_repair_template:
             self.rightPad = self.downstream[:self.rightShortBases]
         else:
             self.rightPad = ''
+        if self.frameshift == -3:
+            self.linker = ''
         if self.frameshift == -2:
             self.linker = self.originalCodon[2:]
         if self.frameshift == -1:
@@ -66,7 +68,7 @@ class frameshift_repair_template:
             self.sign = '+' 
         elif self.frameshift < 0:
             self.sign = ''
-        self.header = ">%s_shift_%s%s" % (self.codonPosition, self.sign, self.frameshift)
+        self.header = ">%s:%s_shift_%s%s" % (args.prepend, self.codonPosition, self.sign, self.frameshift)
         if args.wrap == True:
             self.formatted = """%s\n%s""" % (self.header, wrap_fasta(self.repairTemplate))
         else:
@@ -113,6 +115,12 @@ if __name__ == "__main__":
         nargs='?',
         const=1,
         help='''fasta file containing downstream DNA sequence''')
+    parser.add_argument("--prepend",
+        type=str,
+        nargs='?',
+        const=1,
+        default='',
+        help='''string used to prepend fasta header names, if desired''')
     parser.add_argument("--wrap",
         action='store_true',
         help='''if this argument is used, repair templates will be concatenated and wrapped at 80 chars.
@@ -123,7 +131,7 @@ if __name__ == "__main__":
         nargs='?',
         const=1,
         default=0,
-        help='''[Integer]: size of frameshift to introduce. Allows -2, -1, 0, 1, 2''')
+        help='''[Integer]: size of frameshift to introduce. Allows -3, -2, -1, 1, 2''')
     args = parser.parse_args()
 
     missing_files = 0
