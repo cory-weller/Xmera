@@ -366,11 +366,11 @@ if __name__ == "__main__":
                         type=int,
                         nargs='?',
                         const=1,
-                        default=120,
+                        default=200,
                         help='''Integer. Length of repair template. Half the length will
                                 be allocated to the first sequence, and half 
                                 to the second sequence. Will be rounded down
-                                by one if an odd integer is supplied.  Default: 50''')
+                                by one if an odd integer is supplied.  Default: 200''')
     parser.add_argument("--specificity",
                         type=str,
                         nargs='?',
